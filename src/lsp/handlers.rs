@@ -127,6 +127,113 @@ impl RustAnalyzerClient {
         }
     }
 
+    pub async fn implementation(&mut self, uri: &str, line: u32, character: u32) -> Result<Value> {
+        let params = json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": line, "character": character }
+        });
+
+        self.send_request("textDocument/implementation", Some(params))
+            .await
+    }
+
+    pub async fn parent_module(&mut self, uri: &str, line: u32, character: u32) -> Result<Value> {
+        let params = json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": line, "character": character }
+        });
+
+        self.send_request("experimental/parentModule", Some(params))
+            .await
+    }
+
+    pub async fn prepare_call_hierarchy(&mut self, uri: &str, line: u32, character: u32) -> Result<Value> {
+        let params = json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": line, "character": character }
+        });
+
+        self.send_request("textDocument/prepareCallHierarchy", Some(params))
+            .await
+    }
+
+    pub async fn incoming_calls(&mut self, item: Value) -> Result<Value> {
+        let params = json!({
+            "item": item
+        });
+
+        self.send_request("callHierarchy/incomingCalls", Some(params))
+            .await
+    }
+
+    pub async fn outgoing_calls(&mut self, item: Value) -> Result<Value> {
+        let params = json!({
+            "item": item
+        });
+
+        self.send_request("callHierarchy/outgoingCalls", Some(params))
+            .await
+    }
+
+    pub async fn workspace_symbol(&mut self, query: &str) -> Result<Value> {
+        let params = json!({
+            "query": query
+        });
+
+        let result = self.send_request("workspace/symbol", Some(params)).await?;
+
+        // Simplify the result to reduce token usage
+        if let Some(symbols) = result.as_array() {
+            let simplified: Vec<Value> = symbols
+                .iter()
+                .filter_map(|s| {
+                    let name = s["name"].as_str()?;
+                    let kind = s["kind"].as_u64()?;
+                    let uri = s["location"]["uri"].as_str()?;
+                    let line = s["location"]["range"]["start"]["line"].as_u64()?;
+                    let character = s["location"]["range"]["start"]["character"].as_u64()?;
+
+                    // Extract file path from URI
+                    let path = uri.strip_prefix("file://").unwrap_or(uri);
+
+                    // Convert kind number to readable string
+                    let kind_str = match kind {
+                        1 => "file",
+                        2 => "module",
+                        3 => "namespace",
+                        4 => "package",
+                        5 => "class",
+                        6 => "method",
+                        7 => "property",
+                        8 => "field",
+                        9 => "constructor",
+                        10 => "enum",
+                        11 => "interface",
+                        12 => "function",
+                        13 => "variable",
+                        14 => "constant",
+                        15 => "string",
+                        16 => "number",
+                        17 => "boolean",
+                        18 => "array",
+                        23 => "struct",
+                        _ => "other",
+                    };
+
+                    Some(json!({
+                        "name": name,
+                        "kind": kind_str,
+                        "location": format!("{}:{}:{}", path, line, character)
+                    }))
+                })
+                .collect();
+
+            Ok(json!(simplified))
+        } else {
+            Ok(result)
+        }
+    }
+
     pub async fn code_actions(
         &mut self,
         uri: &str,

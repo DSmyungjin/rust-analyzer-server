@@ -44,6 +44,58 @@ pub fn get_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            name: "rust_analyzer_implementation".to_string(),
+            description: "Find all implementations of a trait at a specific position".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file_path": { "type": "string", "description": "Path to the Rust file" },
+                    "line": { "type": "number", "description": "Line number (0-based)" },
+                    "character": { "type": "number", "description": "Character position (0-based)" }
+                },
+                "required": ["file_path", "line", "character"]
+            }),
+        },
+        ToolDefinition {
+            name: "rust_analyzer_parent_module".to_string(),
+            description: "Navigate to parent module declaration".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file_path": { "type": "string", "description": "Path to the Rust file" },
+                    "line": { "type": "number", "description": "Line number (0-based)" },
+                    "character": { "type": "number", "description": "Character position (0-based)" }
+                },
+                "required": ["file_path", "line", "character"]
+            }),
+        },
+        ToolDefinition {
+            name: "rust_analyzer_incoming_calls".to_string(),
+            description: "Find all functions that call this function".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file_path": { "type": "string", "description": "Path to the Rust file" },
+                    "line": { "type": "number", "description": "Line number (0-based)" },
+                    "character": { "type": "number", "description": "Character position (0-based)" }
+                },
+                "required": ["file_path", "line", "character"]
+            }),
+        },
+        ToolDefinition {
+            name: "rust_analyzer_outgoing_calls".to_string(),
+            description: "Find all functions that this function calls".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file_path": { "type": "string", "description": "Path to the Rust file" },
+                    "line": { "type": "number", "description": "Line number (0-based)" },
+                    "character": { "type": "number", "description": "Character position (0-based)" }
+                },
+                "required": ["file_path", "line", "character"]
+            }),
+        },
+        ToolDefinition {
             name: "rust_analyzer_completion".to_string(),
             description: "Get code completion suggestions at a specific position".to_string(),
             input_schema: json!({
@@ -57,15 +109,18 @@ pub fn get_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "rust_analyzer_symbols".to_string(),
-            description: "Get document symbols (functions, structs, etc.) for a Rust file"
+            name: "rust_analyzer_workspace_symbol".to_string(),
+            description: "Search for symbols across the entire workspace using a query (supports fuzzy matching)"
                 .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "file_path": { "type": "string", "description": "Path to the Rust file" }
+                    "query": {
+                        "type": "string",
+                        "description": "Search query for symbol names (e.g., 'TradeData', 'calculate')"
+                    }
                 },
-                "required": ["file_path"]
+                "required": ["query"]
             }),
         },
         ToolDefinition {

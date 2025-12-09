@@ -226,6 +226,14 @@ impl RustAnalyzerClient {
                 },
                 "procMacro": {
                     "enable": true
+                },
+                "hover": {
+                    "documentation": {
+                        "enable": true
+                    },
+                    "show": {
+                        "structFields": 10
+                    }
                 }
             },
             "capabilities": {
@@ -324,16 +332,12 @@ impl RustAnalyzerClient {
             open_docs.insert(uri.to_string());
         }
 
-        // Send didSave to trigger cargo check.
-        let save_params = json!({
-            "textDocument": {
-                "uri": uri
-            }
-        });
-        self.send_notification("textDocument/didSave", Some(save_params))
-            .await?;
+        // Note: didSave removed to speed up hover/definition/references.
+        // cargo check is triggered separately via diagnostics tool.
+        // This allows faster response times for navigation features.
 
-        // Give rust-analyzer time to process the document and run cargo check.
+        // Give rust-analyzer time to process the document.
+        // Increased delay for large files with complex types.
         tokio::time::sleep(Duration::from_millis(DOCUMENT_OPEN_DELAY_MILLIS)).await;
 
         Ok(())

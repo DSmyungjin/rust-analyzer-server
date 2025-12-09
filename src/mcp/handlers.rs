@@ -54,8 +54,13 @@ pub async fn handle_tool_call(
         "rust_analyzer_hover" => handle_hover(server, args).await,
         "rust_analyzer_definition" => handle_definition(server, args).await,
         "rust_analyzer_references" => handle_references(server, args).await,
+        "rust_analyzer_implementation" => handle_implementation(server, args).await,
+        "rust_analyzer_parent_module" => handle_parent_module(server, args).await,
+        "rust_analyzer_incoming_calls" => handle_incoming_calls(server, args).await,
+        "rust_analyzer_outgoing_calls" => handle_outgoing_calls(server, args).await,
         "rust_analyzer_completion" => handle_completion(server, args).await,
         "rust_analyzer_symbols" => handle_symbols(server, args).await,
+        "rust_analyzer_workspace_symbol" => handle_workspace_symbol(server, args).await,
         "rust_analyzer_format" => handle_format(server, args).await,
         "rust_analyzer_code_actions" => handle_code_actions(server, args).await,
         "rust_analyzer_set_workspace" => handle_set_workspace(server, args).await,
@@ -125,6 +130,209 @@ async fn handle_references(server: &mut RustAnalyzerMCPServer, args: Value) -> R
     })
 }
 
+async fn handle_implementation(
+    server: &mut RustAnalyzerMCPServer,
+    args: Value,
+) -> Result<ToolResult> {
+    let file_path = ToolParams::extract_file_path(&args)?;
+    let (line, character) = ToolParams::extract_position(&args)?;
+
+    let uri = server.open_document_if_needed(&file_path).await?;
+
+    let Some(client) = &mut server.client else {
+        return Err(anyhow!("Client not initialized"));
+    };
+
+    let result = client.implementation(&uri, line, character).await?;
+
+    // Simplify result to reduce token usage
+    let simplified = if let Some(impls) = result.as_array() {
+        let simple_impls: Vec<Value> = impls
+            .iter()
+            .filter_map(|imp| {
+                let target_uri = imp["targetUri"].as_str()?;
+                let line = imp["targetRange"]["start"]["line"].as_u64()?;
+                let char = imp["targetRange"]["start"]["character"].as_u64()?;
+                let path = target_uri.strip_prefix("file://").unwrap_or(target_uri);
+
+                Some(json!({
+                    "location": format!("{}:{}:{}", path, line, char)
+                }))
+            })
+            .collect();
+        json!(simple_impls)
+    } else {
+        result
+    };
+
+    Ok(ToolResult {
+        content: vec![ContentItem {
+            content_type: "text".to_string(),
+            text: serde_json::to_string_pretty(&simplified)?,
+        }],
+    })
+}
+
+async fn handle_parent_module(
+    server: &mut RustAnalyzerMCPServer,
+    args: Value,
+) -> Result<ToolResult> {
+    let file_path = ToolParams::extract_file_path(&args)?;
+    let (line, character) = ToolParams::extract_position(&args)?;
+
+    let uri = server.open_document_if_needed(&file_path).await?;
+
+    let Some(client) = &mut server.client else {
+        return Err(anyhow!("Client not initialized"));
+    };
+
+    let result = client.parent_module(&uri, line, character).await?;
+
+    // Simplify result
+    let simplified = if let Some(modules) = result.as_array() {
+        let simple_modules: Vec<Value> = modules
+            .iter()
+            .filter_map(|m| {
+                let target_uri = m["targetUri"].as_str()?;
+                let path = target_uri.strip_prefix("file://").unwrap_or(target_uri);
+                Some(json!({"location": path}))
+            })
+            .collect();
+        json!(simple_modules)
+    } else {
+        result
+    };
+
+    Ok(ToolResult {
+        content: vec![ContentItem {
+            content_type: "text".to_string(),
+            text: serde_json::to_string_pretty(&simplified)?,
+        }],
+    })
+}
+
+async fn handle_incoming_calls(
+    server: &mut RustAnalyzerMCPServer,
+    args: Value,
+) -> Result<ToolResult> {
+    let file_path = ToolParams::extract_file_path(&args)?;
+    let (line, character) = ToolParams::extract_position(&args)?;
+
+    let uri = server.open_document_if_needed(&file_path).await?;
+
+    let Some(client) = &mut server.client else {
+        return Err(anyhow!("Client not initialized"));
+    };
+
+    // First, prepare call hierarchy to get the item
+    let items = client.prepare_call_hierarchy(&uri, line, character).await?;
+
+    // If no items, return empty
+    if items.is_null() || items.as_array().map_or(true, |a| a.is_empty()) {
+        return Ok(ToolResult {
+            content: vec![ContentItem {
+                content_type: "text".to_string(),
+                text: "[]".to_string(),
+            }],
+        });
+    }
+
+    // Get the first item and find incoming calls
+    let item = &items[0];
+    let result = client.incoming_calls(item.clone()).await?;
+
+    // Simplify result
+    let simplified = if let Some(calls) = result.as_array() {
+        let simple_calls: Vec<Value> = calls
+            .iter()
+            .filter_map(|call| {
+                let from = &call["from"];
+                let name = from["name"].as_str()?;
+                let uri = from["uri"].as_str()?;
+                let line = from["range"]["start"]["line"].as_u64()?;
+                let char = from["range"]["start"]["character"].as_u64()?;
+                let path = uri.strip_prefix("file://").unwrap_or(uri);
+
+                Some(json!({
+                    "caller": name,
+                    "location": format!("{}:{}:{}", path, line, char)
+                }))
+            })
+            .collect();
+        json!(simple_calls)
+    } else {
+        result
+    };
+
+    Ok(ToolResult {
+        content: vec![ContentItem {
+            content_type: "text".to_string(),
+            text: serde_json::to_string_pretty(&simplified)?,
+        }],
+    })
+}
+
+async fn handle_outgoing_calls(
+    server: &mut RustAnalyzerMCPServer,
+    args: Value,
+) -> Result<ToolResult> {
+    let file_path = ToolParams::extract_file_path(&args)?;
+    let (line, character) = ToolParams::extract_position(&args)?;
+
+    let uri = server.open_document_if_needed(&file_path).await?;
+
+    let Some(client) = &mut server.client else {
+        return Err(anyhow!("Client not initialized"));
+    };
+
+    // First, prepare call hierarchy to get the item
+    let items = client.prepare_call_hierarchy(&uri, line, character).await?;
+
+    // If no items, return empty
+    if items.is_null() || items.as_array().map_or(true, |a| a.is_empty()) {
+        return Ok(ToolResult {
+            content: vec![ContentItem {
+                content_type: "text".to_string(),
+                text: "[]".to_string(),
+            }],
+        });
+    }
+
+    // Get the first item and find outgoing calls
+    let item = &items[0];
+    let result = client.outgoing_calls(item.clone()).await?;
+
+    // Simplify result
+    let simplified = if let Some(calls) = result.as_array() {
+        let simple_calls: Vec<Value> = calls
+            .iter()
+            .filter_map(|call| {
+                let to = &call["to"];
+                let name = to["name"].as_str()?;
+                let uri = to["uri"].as_str()?;
+                let line = to["range"]["start"]["line"].as_u64()?;
+                let char = to["range"]["start"]["character"].as_u64()?;
+                let path = uri.strip_prefix("file://").unwrap_or(uri);
+
+                Some(json!({
+                    "callee": name,
+                    "location": format!("{}:{}:{}", path, line, char)
+                }))
+            })
+            .collect();
+        json!(simple_calls)
+    } else {
+        result
+    };
+
+    Ok(ToolResult {
+        content: vec![ContentItem {
+            content_type: "text".to_string(),
+            text: serde_json::to_string_pretty(&simplified)?,
+        }],
+    })
+}
+
 async fn handle_completion(server: &mut RustAnalyzerMCPServer, args: Value) -> Result<ToolResult> {
     let file_path = ToolParams::extract_file_path(&args)?;
     let (line, character) = ToolParams::extract_position(&args)?;
@@ -158,6 +366,31 @@ async fn handle_symbols(server: &mut RustAnalyzerMCPServer, args: Value) -> Resu
 
     let result = client.document_symbols(&uri).await?;
     debug!("Document symbols result: {:?}", result);
+
+    Ok(ToolResult {
+        content: vec![ContentItem {
+            content_type: "text".to_string(),
+            text: serde_json::to_string_pretty(&result)?,
+        }],
+    })
+}
+
+async fn handle_workspace_symbol(
+    server: &mut RustAnalyzerMCPServer,
+    args: Value,
+) -> Result<ToolResult> {
+    let Some(query) = args["query"].as_str() else {
+        return Err(anyhow!("Missing query parameter"));
+    };
+
+    debug!("Searching workspace symbols for query: {}", query);
+
+    let Some(client) = &mut server.client else {
+        return Err(anyhow!("Client not initialized"));
+    };
+
+    let result = client.workspace_symbol(query).await?;
+    debug!("Workspace symbol result: {:?}", result);
 
     Ok(ToolResult {
         content: vec![ContentItem {
