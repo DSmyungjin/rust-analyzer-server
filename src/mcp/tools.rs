@@ -99,20 +99,7 @@ pub fn get_tools() -> Vec<ToolDefinition> {
                 "required": ["file_path", "line", "character", "end_line", "end_character"]
             }),
         },
-        ToolDefinition {
-            name: "rust_analyzer_completion".to_string(),
-            description: "Get code completion suggestions at a specific position".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "file_path": { "type": "string", "description": "Path to the Rust file" },
-                    "line": { "type": "number", "description": "Line number (0-based)" },
-                    "character": { "type": "number", "description": "Character position (0-based)" }
-                },
-                "required": ["file_path", "line", "character"]
-            }),
-        },
-        // 9-12. Code structure analysis
+        // 8-11. Code structure analysis
         ToolDefinition {
             name: "rust_analyzer_implementation".to_string(),
             description: "Find all implementations of a trait at a specific position".to_string(),
@@ -165,33 +152,7 @@ pub fn get_tools() -> Vec<ToolDefinition> {
                 "required": ["file_path", "line", "character"]
             }),
         },
-        // 13-15. Utilities
-        ToolDefinition {
-            name: "rust_analyzer_code_actions".to_string(),
-            description: "Get available code actions for a range in a Rust file".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "file_path": { "type": "string", "description": "Path to the Rust file" },
-                    "line": { "type": "number", "description": "Start line number (0-based)" },
-                    "character": { "type": "number", "description": "Start character position (0-based)" },
-                    "end_line": { "type": "number", "description": "End line number (0-based)" },
-                    "end_character": { "type": "number", "description": "End character position (0-based)" }
-                },
-                "required": ["file_path", "line", "character", "end_line", "end_character"]
-            }),
-        },
-        ToolDefinition {
-            name: "rust_analyzer_format".to_string(),
-            description: "Format a Rust file using rust-analyzer".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "file_path": { "type": "string", "description": "Path to the Rust file" }
-                },
-                "required": ["file_path"]
-            }),
-        },
+        // 12. Workspace-wide utilities
         ToolDefinition {
             name: "rust_analyzer_workspace_diagnostics".to_string(),
             description: "Get all compiler diagnostics across the entire workspace".to_string(),
