@@ -58,6 +58,7 @@ pub async fn handle_tool_call(
         "rust_analyzer_parent_module" => handle_parent_module(server, args).await,
         "rust_analyzer_incoming_calls" => handle_incoming_calls(server, args).await,
         "rust_analyzer_outgoing_calls" => handle_outgoing_calls(server, args).await,
+        "rust_analyzer_inlay_hint" => handle_inlay_hint(server, args).await,
         "rust_analyzer_completion" => handle_completion(server, args).await,
         "rust_analyzer_symbols" => handle_symbols(server, args).await,
         "rust_analyzer_workspace_symbol" => handle_workspace_symbol(server, args).await,
@@ -102,10 +103,30 @@ async fn handle_definition(server: &mut RustAnalyzerMCPServer, args: Value) -> R
 
     let result = client.definition(&uri, line, character).await?;
 
+    // Simplify result to reduce token usage
+    let simplified = if let Some(defs) = result.as_array() {
+        let simple_defs: Vec<Value> = defs
+            .iter()
+            .filter_map(|d| {
+                let target_uri = d["targetUri"].as_str()?;
+                let line = d["targetSelectionRange"]["start"]["line"].as_u64()?;
+                let char = d["targetSelectionRange"]["start"]["character"].as_u64()?;
+                let path = target_uri.strip_prefix("file://").unwrap_or(target_uri);
+
+                Some(json!({
+                    "location": format!("{}:{}:{}", path, line, char)
+                }))
+            })
+            .collect();
+        json!(simple_defs)
+    } else {
+        result
+    };
+
     Ok(ToolResult {
         content: vec![ContentItem {
             content_type: "text".to_string(),
-            text: serde_json::to_string_pretty(&result)?,
+            text: serde_json::to_string_pretty(&simplified)?,
         }],
     })
 }
@@ -122,10 +143,30 @@ async fn handle_references(server: &mut RustAnalyzerMCPServer, args: Value) -> R
 
     let result = client.references(&uri, line, character).await?;
 
+    // Simplify result to reduce token usage
+    let simplified = if let Some(refs) = result.as_array() {
+        let simple_refs: Vec<Value> = refs
+            .iter()
+            .filter_map(|r| {
+                let uri = r["uri"].as_str()?;
+                let line = r["range"]["start"]["line"].as_u64()?;
+                let char = r["range"]["start"]["character"].as_u64()?;
+                let path = uri.strip_prefix("file://").unwrap_or(uri);
+
+                Some(json!({
+                    "location": format!("{}:{}:{}", path, line, char)
+                }))
+            })
+            .collect();
+        json!(simple_refs)
+    } else {
+        result
+    };
+
     Ok(ToolResult {
         content: vec![ContentItem {
             content_type: "text".to_string(),
-            text: serde_json::to_string_pretty(&result)?,
+            text: serde_json::to_string_pretty(&simplified)?,
         }],
     })
 }
@@ -321,6 +362,78 @@ async fn handle_outgoing_calls(
             })
             .collect();
         json!(simple_calls)
+    } else {
+        result
+    };
+
+    Ok(ToolResult {
+        content: vec![ContentItem {
+            content_type: "text".to_string(),
+            text: serde_json::to_string_pretty(&simplified)?,
+        }],
+    })
+}
+
+async fn handle_inlay_hint(
+    server: &mut RustAnalyzerMCPServer,
+    args: Value,
+) -> Result<ToolResult> {
+    let file_path = ToolParams::extract_file_path(&args)?;
+    let (start_line, start_character) = ToolParams::extract_position(&args)?;
+    let end_line = args["end_line"].as_u64().ok_or_else(|| anyhow!("Missing end_line"))? as u32;
+    let end_character = args["end_character"].as_u64().ok_or_else(|| anyhow!("Missing end_character"))? as u32;
+
+    let uri = server.open_document_if_needed(&file_path).await?;
+
+    let Some(client) = &mut server.client else {
+        return Err(anyhow!("Client not initialized"));
+    };
+
+    let result = client.inlay_hint(&uri, start_line, start_character, end_line, end_character).await?;
+
+    // Simplify result to reduce token usage
+    let simplified = if let Some(hints) = result.as_array() {
+        let simple_hints: Vec<Value> = hints
+            .iter()
+            .filter_map(|h| {
+                let position = &h["position"];
+                let line = position["line"].as_u64()?;
+                let char = position["character"].as_u64()?;
+
+                // Extract label (can be string or array)
+                let label = if let Some(label_str) = h["label"].as_str() {
+                    label_str.to_string()
+                } else if let Some(label_parts) = h["label"].as_array() {
+                    label_parts
+                        .iter()
+                        .filter_map(|p| {
+                            if let Some(s) = p.as_str() {
+                                Some(s.to_string())
+                            } else {
+                                p["value"].as_str().map(|s| s.to_string())
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("")
+                } else {
+                    return None;
+                };
+
+                let kind = h["kind"].as_u64().unwrap_or(1);
+                let kind_str = match kind {
+                    1 => "type",
+                    2 => "parameter",
+                    _ => "other",
+                };
+
+                Some(json!({
+                    "position": format!("{}:{}", line, char),
+                    "label": label,
+                    "kind": kind_str
+                }))
+            })
+            .collect();
+        json!(simple_hints)
     } else {
         result
     };

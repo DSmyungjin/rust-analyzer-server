@@ -96,6 +96,21 @@ pub fn get_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            name: "rust_analyzer_inlay_hint".to_string(),
+            description: "Get inlay hints (type annotations) for a code range".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file_path": { "type": "string", "description": "Path to the Rust file" },
+                    "line": { "type": "number", "description": "Start line number (0-based)" },
+                    "character": { "type": "number", "description": "Start character position (0-based)" },
+                    "end_line": { "type": "number", "description": "End line number (0-based)" },
+                    "end_character": { "type": "number", "description": "End character position (0-based)" }
+                },
+                "required": ["file_path", "line", "character", "end_line", "end_character"]
+            }),
+        },
+        ToolDefinition {
             name: "rust_analyzer_completion".to_string(),
             description: "Get code completion suggestions at a specific position".to_string(),
             input_schema: json!({

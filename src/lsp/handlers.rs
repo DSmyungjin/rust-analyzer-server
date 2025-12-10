@@ -175,6 +175,19 @@ impl RustAnalyzerClient {
             .await
     }
 
+    pub async fn inlay_hint(&mut self, uri: &str, start_line: u32, start_char: u32, end_line: u32, end_char: u32) -> Result<Value> {
+        let params = json!({
+            "textDocument": { "uri": uri },
+            "range": {
+                "start": { "line": start_line, "character": start_char },
+                "end": { "line": end_line, "character": end_char }
+            }
+        });
+
+        self.send_request("textDocument/inlayHint", Some(params))
+            .await
+    }
+
     pub async fn workspace_symbol(&mut self, query: &str) -> Result<Value> {
         let params = json!({
             "query": query
