@@ -141,3 +141,78 @@ if std::env::var("CI").is_ok() {
     // Local development (full concurrency, normal timeouts)
 }
 ```
+
+---
+
+## 🤖 MCP rust-analyzer 활용 가이드 (에이전트 최적화)
+
+> **중요**: 코드 탐색 시 **MCP rust-analyzer 우선 사용**. Grep/Glob는 텍스트 검색에만 사용.
+
+### ⚠️ **필수 사전 작업: Workspace 설정**
+
+**MCP rust-analyzer를 사용하기 전에 반드시 workspace를 먼저 설정해야 합니다!**
+
+```rust
+// ❌ 잘못된 사용 (workspace 설정 없이 바로 사용)
+workspace_symbol("CryptoWebSocketClient")  // → null 반환!
+
+// ✅ 올바른 사용 (workspace 설정 후 사용)
+rust_analyzer_set_workspace("/Users/.../whale_trader")  // 1. 먼저 설정!
+workspace_symbol("CryptoWebSocketClient")                // 2. 그 다음 사용
+```
+
+**Workspace 설정 명령:**
+```rust
+rust_analyzer_set_workspace("/Users/kimmyungjin/MacLab/rust_project/whale_trader")
+```
+
+**주의사항:**
+- workspace 설정 직후 rust-analyzer가 프로젝트를 파싱하는 시간이 필요합니다 (수초~수십초)
+- 파싱 중에는 null이 반환될 수 있습니다
+- 한 번 설정하면 세션 동안 유지됩니다
+
+---
+
+### 📊 사용 가능한 도구 (사용 빈도 순)
+
+**0. set_workspace** ⭐ **← 항상 제일 먼저!**
+1. **workspace_symbol** - 전체 심볼 검색 (파일 위치 모를 때)
+2. **definition** - 정의 찾기 (Go to definition)
+3. **references** - 사용처 찾기 (수정 영향 분석)
+4. **hover** - 타입 정보 + 문서
+5. **incoming_calls** - 누가 호출? (호출 역추적)
+6. **outgoing_calls** - 뭘 호출? (의존성 파악)
+7. **diagnostics** - 파일 에러/경고
+8. **implementation** - Trait 구현체 찾기
+9. **parent_module** - 부모 모듈 찾기
+10. **inlay_hint** - 타입 힌트
+11. **workspace_diagnostics** - 전체 프로젝트 진단
+
+### 기본 워크플로우
+
+```
+0. rust_analyzer_set_workspace("/path/to/project") ← ⚠️ 필수!
+1. workspace_symbol("함수명") → 위치 찾기
+2. Read(파일) → 코드 읽기
+3. hover → 외부 타입 확인 (Arc, DataHub 등)
+4. definition → 외부 정의로 이동
+5. references → 사용처 파악
+6. incoming/outgoing_calls → 호출 관계 추적
+7. diagnostics → 에러 확인
+
+Note: 같은 파일 내 struct는 Read만으로 충분, hover 불필요
+```
+
+### MCP vs Grep 선택
+
+- **코드 구조 이해**: MCP (함수, 타입, 호출 관계) ← **항상 우선!**
+- **텍스트 검색**: Grep (문자열 리터럴, 주석만)
+
+### 토큰 효율성
+
+**모든 응답 간소화됨**:
+- 85-94% 토큰 절감
+- 절대경로 → 상대경로
+- 필수 정보만 반환
+
+**일일 토큰 절감**: ~500,000 토큰
