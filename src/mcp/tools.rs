@@ -3,10 +3,18 @@ use serde_json::json;
 
 pub fn get_tools() -> Vec<ToolDefinition> {
     vec![
-        // 1. Must be first - workspace setup
+        // 1-2. Workspace management (must be first)
+        ToolDefinition {
+            name: "rust_analyzer_get_workspace".to_string(),
+            description: "Get current workspace path and initialization status. Call this BEFORE set_workspace to avoid unnecessary reinitialization.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
         ToolDefinition {
             name: "rust_analyzer_set_workspace".to_string(),
-            description: "Set the workspace root directory for rust-analyzer".to_string(),
+            description: "Set the workspace root directory for rust-analyzer. Skips reinitialization if already set to the same path.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {

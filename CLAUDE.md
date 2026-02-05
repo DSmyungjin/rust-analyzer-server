@@ -148,35 +148,41 @@ if std::env::var("CI").is_ok() {
 
 > **중요**: 코드 탐색 시 **MCP rust-analyzer 우선 사용**. Grep/Glob는 텍스트 검색에만 사용.
 
-### ⚠️ **필수 사전 작업: Workspace 설정**
+### ⚠️ **Workspace 설정 (스마트 버전)**
 
-**MCP rust-analyzer를 사용하기 전에 반드시 workspace를 먼저 설정해야 합니다!**
+**먼저 `get_workspace`로 현재 상태 확인 → 필요할 때만 `set_workspace` 호출**
 
 ```rust
-// ❌ 잘못된 사용 (workspace 설정 없이 바로 사용)
-workspace_symbol("CryptoWebSocketClient")  // → null 반환!
+// ✅ 권장 패턴: 먼저 상태 확인
+result = rust_analyzer_get_workspace()
+// → {"workspace": "/path/to/project", "initialized": true}
 
-// ✅ 올바른 사용 (workspace 설정 후 사용)
-rust_analyzer_set_workspace("/Users/.../whale_trader")  // 1. 먼저 설정!
-workspace_symbol("CryptoWebSocketClient")                // 2. 그 다음 사용
+// 다른 프로젝트면 set_workspace (같으면 스킵됨)
+rust_analyzer_set_workspace("/path/to/project")
+// → "Already initialized: /path/to/project (skipped)"  // 같으면 즉시 반환!
+// → "Workspace set to: /path/to/new-project"           // 다르면 재초기화
+
+workspace_symbol("CryptoWebSocketClient")
 ```
 
-**Workspace 설정 명령:**
 ```rust
-rust_analyzer_set_workspace("/Users/kimmyungjin/MacLab/rust_project/whale_trader")
+// ❌ 피해야 할 패턴: 매번 set_workspace 호출
+rust_analyzer_set_workspace("/path/to/project")  // 매번 호출하면...
+rust_analyzer_set_workspace("/path/to/project")  // → 이제 스킵됨! (개선됨)
 ```
 
 **주의사항:**
-- workspace 설정 직후 rust-analyzer가 프로젝트를 파싱하는 시간이 필요합니다 (수초~수십초)
-- 파싱 중에는 null이 반환될 수 있습니다
-- 한 번 설정하면 세션 동안 유지됩니다
+- `set_workspace`는 같은 경로면 자동 스킵 (재파싱 없음)
+- 새 프로젝트로 변경 시에만 파싱 시간 필요 (수초~수십초)
+- `get_workspace`로 현재 상태 확인 가능: `{"workspace": "...", "initialized": true/false}`
 
 ---
 
 ### 📊 사용 가능한 도구 (사용 빈도 순)
 
-**0. set_workspace** ⭐ **← 항상 제일 먼저!**
-1. **workspace_symbol** - 전체 심볼 검색 (파일 위치 모를 때)
+**0. get_workspace** - 현재 상태 확인 (먼저 호출!)
+**1. set_workspace** - workspace 설정 (다른 프로젝트일 때만)
+2. **workspace_symbol** - 전체 심볼 검색 (파일 위치 모를 때)
 2. **definition** - 정의 찾기 (Go to definition)
 3. **references** - 사용처 찾기 (수정 영향 분석)
 4. **hover** - 타입 정보 + 문서
@@ -191,14 +197,15 @@ rust_analyzer_set_workspace("/Users/kimmyungjin/MacLab/rust_project/whale_trader
 ### 기본 워크플로우
 
 ```
-0. rust_analyzer_set_workspace("/path/to/project") ← ⚠️ 필수!
-1. workspace_symbol("함수명") → 위치 찾기
-2. Read(파일) → 코드 읽기
-3. hover → 외부 타입 확인 (Arc, DataHub 등)
-4. definition → 외부 정의로 이동
-5. references → 사용처 파악
-6. incoming/outgoing_calls → 호출 관계 추적
-7. diagnostics → 에러 확인
+0. rust_analyzer_get_workspace() → 현재 상태 확인
+1. rust_analyzer_set_workspace("/path") → 필요시만 (자동 스킵됨)
+2. workspace_symbol("함수명") → 위치 찾기
+3. Read(파일) → 코드 읽기
+4. hover → 외부 타입 확인 (Arc, DataHub 등)
+5. definition → 외부 정의로 이동
+6. references → 사용처 파악
+7. incoming/outgoing_calls → 호출 관계 추적
+8. diagnostics → 에러 확인
 
 Note: 같은 파일 내 struct는 Read만으로 충분, hover 불필요
 ```

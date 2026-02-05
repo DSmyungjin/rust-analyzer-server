@@ -1,9 +1,11 @@
 use anyhow::{anyhow, Result};
-use log::debug;
+use log::{debug, info};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::{
+    config::{get_indexing_timeout_secs, RETRY_INTERVAL_MILLIS},
     diagnostics::format_diagnostics,
     protocol::mcp::{ContentItem, ToolResult},
 };
@@ -43,6 +45,49 @@ impl ToolParams {
     }
 }
 
+/// Helper macro to check if a result is ready (not null, not empty).
+macro_rules! is_result_ready {
+    ($result:expr) => {{
+        if $result.is_null() {
+            false
+        } else if let Some(arr) = $result.as_array() {
+            !arr.is_empty()
+        } else {
+            true
+        }
+    }};
+}
+
+/// Helper function to retry an operation with proper logging and timeout.
+/// Returns (result, should_return) tuple.
+fn check_retry_timeout(
+    tool_name: &str,
+    start: &Instant,
+    logged_waiting: &mut bool,
+) -> Result<bool> {
+    let timeout = Duration::from_secs(get_indexing_timeout_secs());
+
+    if start.elapsed() >= timeout {
+        return Err(anyhow!(
+            "Rust-analyzer is still indexing the project. Waited {} seconds. \
+            The project may be large and need more time to complete indexing. \
+            Please try again in a moment.",
+            timeout.as_secs()
+        ));
+    }
+
+    if !*logged_waiting {
+        info!(
+            "{}: Waiting for rust-analyzer to complete indexing (timeout: {}s)...",
+            tool_name,
+            timeout.as_secs()
+        );
+        *logged_waiting = true;
+    }
+
+    Ok(false)
+}
+
 pub async fn handle_tool_call(
     server: &mut RustAnalyzerMCPServer,
     tool_name: &str,
@@ -64,6 +109,7 @@ pub async fn handle_tool_call(
         "rust_analyzer_workspace_symbol" => handle_workspace_symbol(server, args).await,
         "rust_analyzer_format" => handle_format(server, args).await,
         "rust_analyzer_code_actions" => handle_code_actions(server, args).await,
+        "rust_analyzer_get_workspace" => handle_get_workspace(server).await,
         "rust_analyzer_set_workspace" => handle_set_workspace(server, args).await,
         "rust_analyzer_diagnostics" => handle_diagnostics(server, args).await,
         "rust_analyzer_workspace_diagnostics" => handle_workspace_diagnostics(server, args).await,
@@ -81,7 +127,25 @@ async fn handle_hover(server: &mut RustAnalyzerMCPServer, args: Value) -> Result
         return Err(anyhow!("Client not initialized"));
     };
 
-    let result = client.hover(&uri, line, character).await?;
+    // Retry logic: wait for indexing to complete
+    let retry_interval = Duration::from_millis(RETRY_INTERVAL_MILLIS);
+    let start = Instant::now();
+    let mut logged_waiting = false;
+
+    let result = loop {
+        match client.hover(&uri, line, character).await {
+            Ok(result) if is_result_ready!(result) => {
+                if logged_waiting {
+                    info!("hover: Indexing complete, returning results");
+                }
+                break result;
+            }
+            Ok(_) | Err(_) => {
+                check_retry_timeout("hover", &start, &mut logged_waiting)?;
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    };
 
     Ok(ToolResult {
         content: vec![ContentItem {
@@ -101,7 +165,25 @@ async fn handle_definition(server: &mut RustAnalyzerMCPServer, args: Value) -> R
         return Err(anyhow!("Client not initialized"));
     };
 
-    let result = client.definition(&uri, line, character).await?;
+    // Retry logic: wait for indexing to complete
+    let retry_interval = Duration::from_millis(RETRY_INTERVAL_MILLIS);
+    let start = Instant::now();
+    let mut logged_waiting = false;
+
+    let result = loop {
+        match client.definition(&uri, line, character).await {
+            Ok(result) if is_result_ready!(result) => {
+                if logged_waiting {
+                    info!("definition: Indexing complete, returning results");
+                }
+                break result;
+            }
+            Ok(_) | Err(_) => {
+                check_retry_timeout("definition", &start, &mut logged_waiting)?;
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    };
 
     // Simplify result to reduce token usage
     let simplified = if let Some(defs) = result.as_array() {
@@ -141,7 +223,25 @@ async fn handle_references(server: &mut RustAnalyzerMCPServer, args: Value) -> R
         return Err(anyhow!("Client not initialized"));
     };
 
-    let result = client.references(&uri, line, character).await?;
+    // Retry logic: wait for indexing to complete
+    let retry_interval = Duration::from_millis(RETRY_INTERVAL_MILLIS);
+    let start = Instant::now();
+    let mut logged_waiting = false;
+
+    let result = loop {
+        match client.references(&uri, line, character).await {
+            Ok(result) if is_result_ready!(result) => {
+                if logged_waiting {
+                    info!("references: Indexing complete, returning results");
+                }
+                break result;
+            }
+            Ok(_) | Err(_) => {
+                check_retry_timeout("references", &start, &mut logged_waiting)?;
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    };
 
     // Simplify result to reduce token usage
     let simplified = if let Some(refs) = result.as_array() {
@@ -184,7 +284,25 @@ async fn handle_implementation(
         return Err(anyhow!("Client not initialized"));
     };
 
-    let result = client.implementation(&uri, line, character).await?;
+    // Retry logic: wait for indexing to complete
+    let retry_interval = Duration::from_millis(RETRY_INTERVAL_MILLIS);
+    let start = Instant::now();
+    let mut logged_waiting = false;
+
+    let result = loop {
+        match client.implementation(&uri, line, character).await {
+            Ok(result) if is_result_ready!(result) => {
+                if logged_waiting {
+                    info!("implementation: Indexing complete, returning results");
+                }
+                break result;
+            }
+            Ok(_) | Err(_) => {
+                check_retry_timeout("implementation", &start, &mut logged_waiting)?;
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    };
 
     // Simplify result to reduce token usage
     let simplified = if let Some(impls) = result.as_array() {
@@ -265,22 +383,36 @@ async fn handle_incoming_calls(
         return Err(anyhow!("Client not initialized"));
     };
 
-    // First, prepare call hierarchy to get the item
-    let items = client.prepare_call_hierarchy(&uri, line, character).await?;
+    // Retry logic: wait for indexing to complete
+    let retry_interval = Duration::from_millis(RETRY_INTERVAL_MILLIS);
+    let start = Instant::now();
+    let mut logged_waiting = false;
 
-    // If no items, return empty
-    if items.is_null() || items.as_array().map_or(true, |a| a.is_empty()) {
-        return Ok(ToolResult {
-            content: vec![ContentItem {
-                content_type: "text".to_string(),
-                text: "[]".to_string(),
-            }],
-        });
-    }
-
-    // Get the first item and find incoming calls
-    let item = &items[0];
-    let result = client.incoming_calls(item.clone()).await?;
+    let result = loop {
+        // First, prepare call hierarchy to get the item
+        match client.prepare_call_hierarchy(&uri, line, character).await {
+            Ok(items) if !items.is_null() && items.as_array().map_or(false, |a| !a.is_empty()) => {
+                // Get the first item and find incoming calls
+                let item = &items[0];
+                match client.incoming_calls(item.clone()).await {
+                    Ok(result) => {
+                        if logged_waiting {
+                            info!("incoming_calls: Indexing complete, returning results");
+                        }
+                        break result;
+                    }
+                    Err(_) => {
+                        check_retry_timeout("incoming_calls", &start, &mut logged_waiting)?;
+                        tokio::time::sleep(retry_interval).await;
+                    }
+                }
+            }
+            Ok(_) | Err(_) => {
+                check_retry_timeout("incoming_calls", &start, &mut logged_waiting)?;
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    };
 
     // Simplify result
     let simplified = if let Some(calls) = result.as_array() {
@@ -326,22 +458,36 @@ async fn handle_outgoing_calls(
         return Err(anyhow!("Client not initialized"));
     };
 
-    // First, prepare call hierarchy to get the item
-    let items = client.prepare_call_hierarchy(&uri, line, character).await?;
+    // Retry logic: wait for indexing to complete
+    let retry_interval = Duration::from_millis(RETRY_INTERVAL_MILLIS);
+    let start = Instant::now();
+    let mut logged_waiting = false;
 
-    // If no items, return empty
-    if items.is_null() || items.as_array().map_or(true, |a| a.is_empty()) {
-        return Ok(ToolResult {
-            content: vec![ContentItem {
-                content_type: "text".to_string(),
-                text: "[]".to_string(),
-            }],
-        });
-    }
-
-    // Get the first item and find outgoing calls
-    let item = &items[0];
-    let result = client.outgoing_calls(item.clone()).await?;
+    let result = loop {
+        // First, prepare call hierarchy to get the item
+        match client.prepare_call_hierarchy(&uri, line, character).await {
+            Ok(items) if !items.is_null() && items.as_array().map_or(false, |a| !a.is_empty()) => {
+                // Get the first item and find outgoing calls
+                let item = &items[0];
+                match client.outgoing_calls(item.clone()).await {
+                    Ok(result) => {
+                        if logged_waiting {
+                            info!("outgoing_calls: Indexing complete, returning results");
+                        }
+                        break result;
+                    }
+                    Err(_) => {
+                        check_retry_timeout("outgoing_calls", &start, &mut logged_waiting)?;
+                        tokio::time::sleep(retry_interval).await;
+                    }
+                }
+            }
+            Ok(_) | Err(_) => {
+                check_retry_timeout("outgoing_calls", &start, &mut logged_waiting)?;
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    };
 
     // Simplify result
     let simplified = if let Some(calls) = result.as_array() {
@@ -502,7 +648,26 @@ async fn handle_workspace_symbol(
         return Err(anyhow!("Client not initialized"));
     };
 
-    let result = client.workspace_symbol(query).await?;
+    // Retry logic: wait for indexing to complete
+    let retry_interval = Duration::from_millis(RETRY_INTERVAL_MILLIS);
+    let start = Instant::now();
+    let mut logged_waiting = false;
+
+    let result = loop {
+        match client.workspace_symbol(query).await {
+            Ok(result) if is_result_ready!(result) => {
+                if logged_waiting {
+                    info!("workspace_symbol: Indexing complete, returning results");
+                }
+                break result;
+            }
+            Ok(_) | Err(_) => {
+                check_retry_timeout("workspace_symbol", &start, &mut logged_waiting)?;
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    };
+
     debug!("Workspace symbol result: {:?}", result);
 
     Ok(ToolResult {
@@ -557,6 +722,20 @@ async fn handle_code_actions(
     })
 }
 
+async fn handle_get_workspace(server: &RustAnalyzerMCPServer) -> Result<ToolResult> {
+    let result = json!({
+        "workspace": server.workspace_root.display().to_string(),
+        "initialized": server.client.is_some()
+    });
+
+    Ok(ToolResult {
+        content: vec![ContentItem {
+            content_type: "text".to_string(),
+            text: serde_json::to_string(&result)?,
+        }],
+    })
+}
+
 async fn handle_set_workspace(
     server: &mut RustAnalyzerMCPServer,
     args: Value,
@@ -565,23 +744,39 @@ async fn handle_set_workspace(
         return Err(anyhow!("Missing workspace_path"));
     };
 
-    // Shutdown existing client.
+    // Resolve the new workspace path.
+    let new_workspace_root = PathBuf::from(workspace_path);
+    let new_workspace_root = new_workspace_root.canonicalize().unwrap_or_else(|_| {
+        if new_workspace_root.is_absolute() {
+            new_workspace_root.clone()
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(&new_workspace_root)
+        }
+    });
+
+    // Skip reinitialization if same workspace and client is already running.
+    if server.workspace_root == new_workspace_root && server.client.is_some() {
+        return Ok(ToolResult {
+            content: vec![ContentItem {
+                content_type: "text".to_string(),
+                text: format!(
+                    "Already initialized: {} (skipped)",
+                    new_workspace_root.display()
+                ),
+            }],
+        });
+    }
+
+    // Shutdown existing client only if changing workspace.
     if let Some(client) = &mut server.client {
         client.shutdown().await?;
     }
     server.client = None;
 
-    // Set new workspace with proper absolute path handling.
-    let workspace_root = PathBuf::from(workspace_path);
-    server.workspace_root = workspace_root.canonicalize().unwrap_or_else(|_| {
-        if workspace_root.is_absolute() {
-            workspace_root.clone()
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(&workspace_root)
-        }
-    });
+    // Set new workspace.
+    server.workspace_root = new_workspace_root;
 
     // Start the new client automatically.
     server.ensure_client_started().await?;
