@@ -20,15 +20,15 @@ async fn test_server_initialization() -> Result<()> {
 
     // Verify some expected tools exist
     let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert!(tool_names.contains(&"rust_analyzer_symbols"));
     assert!(tool_names.contains(&"rust_analyzer_hover"));
+    assert!(tool_names.contains(&"rust_analyzer_definition"));
 
     Ok(())
 }
 
 #[tokio::test]
 async fn test_all_lsp_tools() -> Result<()> {
-    let mut client = IpcClient::get_or_create("test-project").await?;
+    let mut client = IpcClient::get_or_create("test-project-singleton").await?;
     let workspace_path = client.workspace_path().to_path_buf();
 
     // Test 1: Get symbols for main.rs
@@ -218,28 +218,44 @@ async fn test_error_handling_invalid_positions() -> Result<()> {
 
 async fn test_symbols(client: &mut IpcClient, workspace_path: &Path) -> Result<()> {
     let main_path = workspace_path.join("src/main.rs");
-    let response = client
-        .call_tool(
-            "rust_analyzer_symbols",
-            json!({
-                "file_path": main_path.to_str().unwrap()
-            }),
-        )
-        .await?;
 
-    let Some(content) = response.get("content") else {
-        return Err(anyhow::anyhow!("No content in symbols response"));
-    };
+    // Retry since rust-analyzer may still be indexing
+    let mut symbols: Vec<Value> = vec![];
+    for attempt in 0..5 {
+        let response = client
+            .call_tool(
+                "rust_analyzer_symbols",
+                json!({
+                    "file_path": main_path.to_str().unwrap()
+                }),
+            )
+            .await?;
 
-    let Some(text) = content[0].get("text") else {
-        return Err(anyhow::anyhow!("No text in symbols response"));
-    };
+        let Some(content) = response.get("content") else {
+            return Err(anyhow::anyhow!("No content in symbols response"));
+        };
 
-    let Some(text_str) = text.as_str() else {
-        return Err(anyhow::anyhow!("Text is not a string"));
-    };
+        let Some(text) = content[0].get("text") else {
+            return Err(anyhow::anyhow!("No text in symbols response"));
+        };
 
-    let symbols: Vec<Value> = serde_json::from_str(text_str)?;
+        let Some(text_str) = text.as_str() else {
+            return Err(anyhow::anyhow!("Text is not a string"));
+        };
+
+        if text_str == "null" || text_str == "[]" {
+            if attempt < 4 {
+                eprintln!("Symbols attempt {}: null response, retrying...", attempt + 1);
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                continue;
+            }
+            return Err(anyhow::anyhow!("Symbols still null after retries"));
+        }
+
+        symbols = serde_json::from_str(text_str)?;
+        break;
+    }
+
     assert!(!symbols.is_empty(), "Should have symbols in main.rs");
 
     let symbol_names: Vec<String> = symbols

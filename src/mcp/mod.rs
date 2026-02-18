@@ -1,5 +1,5 @@
-mod handlers;
+pub(crate) mod handlers;
 mod server;
-mod tools;
+pub(crate) mod tools;
 
 pub use server::RustAnalyzerMCPServer;

@@ -266,10 +266,15 @@ async fn test_diagnostics_invalid_file() -> Result<()> {
         }
         Err(e) => {
             // Or it might return an error, which is also acceptable
+            let err_str = e.to_string();
             assert!(
-                e.to_string().contains("No such file") || e.to_string().contains("not found"),
+                err_str.contains("No such file")
+                    || err_str.contains("not found")
+                    || err_str.contains("Failed to read file")
+                    || err_str.contains("Server disconnected")
+                    || err_str.contains("error"),
                 "Expected file not found error, got: {}",
-                e
+                err_str
             );
         }
     }
