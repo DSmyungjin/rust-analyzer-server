@@ -3,7 +3,7 @@ Get all compiler diagnostics across the entire workspace.
 Usage: /ra-workspace-diagnostics
 
 ```bash
-RESULT=$(curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-3000}/api/v1/rust_analyzer_workspace_diagnostics" \
+RESULT=$(curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/rust_analyzer_workspace_diagnostics" \
   -H 'Content-Type: application/json' \
   -d '{}' 2>/dev/null)
 

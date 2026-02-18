@@ -11,7 +11,7 @@ ARGS="$ARGUMENTS"
 FILE=$(echo "$ARGS" | awk '{print $1}')
 LINE=$(echo "$ARGS" | awk '{print $2}')
 CHAR=$(echo "$ARGS" | awk '{print $3}')
-PORT="${RUST_ANALYZER_PORT:-3000}"
+PORT="${RUST_ANALYZER_PORT:-15423}"
 BASE="http://localhost:${PORT}/api/v1"
 
 echo "=== Impact Analysis: $FILE:$LINE:$CHAR ==="

@@ -108,7 +108,7 @@ The `test-project/` directory contains a minimal Rust project used for integrati
 ## Key Implementation Details
 
 ### HTTP API
-- Axum 0.7 REST API on `localhost:3000` (configurable)
+- Axum 0.7 REST API on `localhost:15423` (configurable)
 - Routes: `/api/v1/health`, `/api/v1/tools`, `/api/v1/workspace`, `/api/v1/shutdown`, `/api/v1/:tool_name`
 - JSON envelope responses with `ok`/`error` fields
 - CORS enabled via tower-http

@@ -5,7 +5,7 @@ Usage: /ra-setup [workspace_path]
 If no workspace_path is given, just checks the server health.
 
 ```bash
-PORT="${RUST_ANALYZER_PORT:-3000}"
+PORT="${RUST_ANALYZER_PORT:-15423}"
 WORKSPACE="$ARGUMENTS"
 
 # Health check

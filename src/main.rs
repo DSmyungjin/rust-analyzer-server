@@ -12,7 +12,7 @@ struct Cli {
     workspace: Option<PathBuf>,
 
     /// Port to listen on
-    #[arg(short, long, default_value = "3000", env = "RUST_ANALYZER_PORT")]
+    #[arg(short, long, default_value = "15423", env = "RUST_ANALYZER_PORT")]
     port: u16,
 
     /// Bind address

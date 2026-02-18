@@ -7,7 +7,7 @@ Example: /ra-diagnostics src/main.rs
 ```bash
 FILE="$ARGUMENTS"
 
-RESULT=$(curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-3000}/api/v1/rust_analyzer_diagnostics" \
+RESULT=$(curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/rust_analyzer_diagnostics" \
   -H 'Content-Type: application/json' \
   -d "{\"file_path\":\"$FILE\"}" 2>/dev/null)
 

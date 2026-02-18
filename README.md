@@ -6,7 +6,7 @@ A standalone HTTP server for rust-analyzer that keeps the language server warm a
 
 ```
 rust-analyzer-server (persistent HTTP server, rust-analyzer always warm)
-  ^  REST API (localhost:3000)
+  ^  REST API (localhost:15423)
   |
 Claude Code skills (.claude/commands/ra-*.md)
   -> curl calls to the HTTP server
@@ -39,14 +39,14 @@ The binary will be at `target/release/rust-analyzer-server`.
 ### Start the Server
 
 ```bash
-# Start with default settings (port 3000, current directory as workspace)
+# Start with default settings (port 15423, current directory as workspace)
 rust-analyzer-server
 
 # Specify workspace and port
 rust-analyzer-server --workspace /path/to/project --port 4000
 
 # Custom bind address
-rust-analyzer-server --bind 0.0.0.0 --port 3000
+rust-analyzer-server --bind 0.0.0.0 --port 15423
 ```
 
 Environment variable `RUST_ANALYZER_PORT` can also set the port.
@@ -82,20 +82,20 @@ All responses use a JSON envelope:
 
 ```bash
 # Health check
-curl http://localhost:3000/api/v1/health
+curl http://localhost:15423/api/v1/health
 
 # Get hover info
-curl -X POST http://localhost:3000/api/v1/rust_analyzer_hover \
+curl -X POST http://localhost:15423/api/v1/rust_analyzer_hover \
   -H 'Content-Type: application/json' \
   -d '{"file_path":"src/main.rs","line":5,"character":10}'
 
 # Find definition
-curl -X POST http://localhost:3000/api/v1/rust_analyzer_definition \
+curl -X POST http://localhost:15423/api/v1/rust_analyzer_definition \
   -H 'Content-Type: application/json' \
   -d '{"file_path":"src/main.rs","line":10,"character":15}'
 
 # Workspace symbol search
-curl -X POST http://localhost:3000/api/v1/rust_analyzer_workspace_symbol \
+curl -X POST http://localhost:15423/api/v1/rust_analyzer_workspace_symbol \
   -H 'Content-Type: application/json' \
   -d '{"query":"MyStruct"}'
 ```
