@@ -7,7 +7,7 @@ Please reach out here in a Github issue if we can do anything to help you contri
 
 ## Submitting bug reports and feature requests
 
-You can create issues [here](https://github.com/zeenix/rust-analyzer-mcp/issues/new). When reporting
+You can create issues [here](https://github.com/DSmyungjin/rust-analyzer-server/issues/new). When reporting
 a bug or asking for help, please include enough details so that the people helping you can reproduce
 the behavior you are seeing. For some tips on how to approach this, read about how to produce a
 [Minimal, Complete, and Verifiable Example](https://stackoverflow.com/help/mcve).

@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use rust_analyzer_mcp::RustAnalyzerMCPServer;
+use rust_analyzer_server::RustAnalyzerMCPServer;
 
 #[derive(Parser)]
-#[command(name = "rust-analyzer-mcp", about = "Standalone HTTP server for rust-analyzer")]
+#[command(name = "rust-analyzer-server", about = "Standalone HTTP server for rust-analyzer")]
 struct Cli {
     /// Workspace path (defaults to current directory)
     #[arg(short, long)]
@@ -41,14 +41,14 @@ async fn main() -> Result<()> {
     match cli.command {
         Some(Commands::Install { path }) => {
             let target = path.canonicalize().unwrap_or(path);
-            rust_analyzer_mcp::install::install_skills(&target)?;
+            rust_analyzer_server::install::install_skills(&target)?;
         }
         None => {
             let workspace = cli
                 .workspace
                 .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
             let server = RustAnalyzerMCPServer::with_workspace(workspace);
-            rust_analyzer_mcp::http::serve(&cli.bind, cli.port, server).await?;
+            rust_analyzer_server::http::serve(&cli.bind, cli.port, server).await?;
         }
     }
 

@@ -4,14 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-rust-analyzer-mcp is a Model Context Protocol (MCP) server that provides integration with rust-analyzer LSP, allowing AI assistants to analyze Rust code through standardized tools. The server acts as a bridge between MCP clients and rust-analyzer, translating MCP tool calls into LSP requests.
+rust-analyzer-server is a standalone HTTP server that keeps rust-analyzer warm across requests, with installable Claude Code skills for seamless integration. The server starts rust-analyzer once and keeps it running — all subsequent requests are fast because the project is already indexed.
 
 ## Architecture
 
 The codebase follows a modular architecture:
 
-- **Main MCP Server** (`src/main.rs`): Handles MCP protocol, manages rust-analyzer subprocess, and routes tool calls to LSP methods
-- **Test Support Library** (`test-support/`): Provides `MCPTestClient` for integration testing with proper process lifecycle management
+- **HTTP Server** (`src/http/`): Axum-based REST API server with routes, state management, and graceful shutdown
+- **Main Entry Point** (`src/main.rs`): Clap CLI with `serve` (default) and `install` subcommands
+- **LSP Bridge** (`src/mcp/`): Manages rust-analyzer subprocess, translates HTTP requests to LSP calls
+- **Skill Templates** (`src/skills/`): Embedded markdown skill files installed into target projects
+- **Test Support Library** (`test-support/`): HTTP client for integration testing with server lifecycle management
 - **Test Structure**:
   - `tests/integration/`: Core MCP server integration tests
   - `tests/stress/`: Concurrency and performance stress tests
@@ -19,10 +22,11 @@ The codebase follows a modular architecture:
   - `tests/property/`: Property-based fuzzing tests
 
 Key architectural decisions:
-- Uses Tokio async runtime for concurrent request handling
-- Maintains persistent rust-analyzer subprocess for performance
+- Axum 0.7 HTTP server with `Arc<tokio::sync::Mutex<_>>` for thread-safe access to the LSP bridge
+- Maintains persistent rust-analyzer subprocess — warm across all requests
 - Implements proper LSP initialization sequence with workspace support
-- Handles CI environment detection for test reliability
+- REST API with JSON envelope responses: `{"ok": true, "result": {...}}` / `{"ok": false, "error": "..."}`
+- Installable Claude Code skills via `rust-analyzer-server install <path>`
 
 ## Development Commands
 
@@ -31,13 +35,19 @@ Key architectural decisions:
 ```bash
 # Development build and run
 cargo build
-cargo run -- /path/to/workspace
+cargo run -- --workspace /path/to/project
+
+# Specify port
+cargo run -- --workspace /path/to/project --port 4000
 
 # Release build (optimized with LTO)
 cargo build --release
 
+# Install skills into a target project
+cargo run -- install /path/to/target-project
+
 # Run with debug logging
-RUST_LOG=debug cargo run -- /path/to/workspace
+RUST_LOG=debug cargo run -- --workspace /path/to/project
 ```
 
 ### Testing
@@ -97,10 +107,12 @@ The `test-project/` directory contains a minimal Rust project used for integrati
 
 ## Key Implementation Details
 
-### MCP Protocol Handling
-- Implements full MCP initialize sequence with tool discovery
-- Returns proper JSON-RPC responses with error handling
-- Tools return results wrapped in MCP content items
+### HTTP API
+- Axum 0.7 REST API on `localhost:3000` (configurable)
+- Routes: `/api/v1/health`, `/api/v1/tools`, `/api/v1/workspace`, `/api/v1/shutdown`, `/api/v1/:tool_name`
+- JSON envelope responses with `ok`/`error` fields
+- CORS enabled via tower-http
+- Graceful shutdown via `/api/v1/shutdown` or Ctrl-C
 
 ### rust-analyzer Integration
 - Spawns rust-analyzer as subprocess with stdio communication
@@ -123,13 +135,15 @@ Use gitmoji for commit messages. Refer to the official gimoji list at:
 ## Testing Patterns
 
 ### Integration Tests
-- Use `MCPTestClient::initialize_and_wait()` to ensure rust-analyzer is ready
-- Check for both successful responses and null handling
+- Use `IpcClient::get_or_create("test-project")` to connect to or start an HTTP server
+- Deterministic port allocation per project type for test isolation
+- Check for both successful responses and null handling during indexing
 - Test invalid inputs for error handling
 
 ### Stress Tests
-- Test concurrent requests with `futures::future::join_all`
-- Verify memory stability with repeated operations
+- Use separate project type `"test-project-concurrent"` for isolation
+- Warm up server before firing concurrent requests
+- Tolerate partial failures (50%+ success threshold) under mutex contention
 - Test rapid-fire sequential requests for throughput
 
 ### CI-Specific Testing

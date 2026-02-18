@@ -12,9 +12,9 @@ WORKSPACE="$ARGUMENTS"
 HEALTH=$(curl -s "http://localhost:${PORT}/api/v1/health" 2>/dev/null)
 if [ $? -ne 0 ] || [ -z "$HEALTH" ]; then
   echo "ERROR: rust-analyzer HTTP server is not running on port ${PORT}."
-  echo "Start it with: rust-analyzer-mcp --workspace /path/to/project"
+  echo "Start it with: rust-analyzer-server --workspace /path/to/project"
   echo ""
-  echo "Or set a custom port: RUST_ANALYZER_PORT=4000 rust-analyzer-mcp -p 4000"
+  echo "Or set a custom port: RUST_ANALYZER_PORT=4000 rust-analyzer-server -p 4000"
   exit 1
 fi
 

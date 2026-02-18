@@ -76,13 +76,13 @@ impl MCPTestClient {
             % 500) as u64;
         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
         // Use the built binary directly instead of cargo run for speed and isolation
-        // CARGO_MANIFEST_DIR points to the crate being tested (rust-analyzer-mcp)
-        // The binary is in rust-analyzer-mcp/target/, not in the parent directory
+        // CARGO_MANIFEST_DIR points to the crate being tested (rust-analyzer-server)
+        // The binary is in rust-analyzer-server/target/, not in the parent directory
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
         let project_root = std::path::Path::new(&manifest_dir);
 
-        let release_binary = project_root.join("target/release/rust-analyzer-mcp");
-        let debug_binary = project_root.join("target/debug/rust-analyzer-mcp");
+        let release_binary = project_root.join("target/release/rust-analyzer-server");
+        let debug_binary = project_root.join("target/debug/rust-analyzer-server");
 
         let binary = if release_binary.exists() {
             release_binary
@@ -102,7 +102,7 @@ impl MCPTestClient {
                 .unwrap()
                 .as_nanos()
         );
-        let temp_dir = format!("/tmp/rust-analyzer-mcp-test-{}", unique_id);
+        let temp_dir = format!("/tmp/rust-analyzer-server-test-{}", unique_id);
 
         // Create the temp directories
         std::fs::create_dir_all(&temp_dir).ok();
@@ -139,7 +139,7 @@ impl MCPTestClient {
                     break;
                 }
                 if !line.trim().is_empty() {
-                    eprintln!("[rust-analyzer-mcp stderr] {}", line.trim());
+                    eprintln!("[rust-analyzer-server stderr] {}", line.trim());
                 }
                 line.clear();
             }
@@ -169,7 +169,7 @@ impl MCPTestClient {
                 .unwrap()
                 .as_nanos()
         );
-        let temp_dir = format!("/tmp/rust-analyzer-mcp-test-{}", unique_id);
+        let temp_dir = format!("/tmp/rust-analyzer-server-test-{}", unique_id);
 
         // Create the temp directories
         std::fs::create_dir_all(&temp_dir).ok();
@@ -204,7 +204,7 @@ impl MCPTestClient {
                     break;
                 }
                 if !line.trim().is_empty() {
-                    eprintln!("[rust-analyzer-mcp stderr] {}", line.trim());
+                    eprintln!("[rust-analyzer-server stderr] {}", line.trim());
                 }
                 line.clear();
             }

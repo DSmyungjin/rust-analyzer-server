@@ -16,7 +16,7 @@ RESULT=$(curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-3000}/api/v1/ru
 
 if [ $? -ne 0 ] || [ -z "$RESULT" ]; then
   echo "ERROR: rust-analyzer HTTP server is not running."
-  echo "Start it with: rust-analyzer-mcp --workspace /path/to/project"
+  echo "Start it with: rust-analyzer-server --workspace /path/to/project"
   exit 1
 fi
 

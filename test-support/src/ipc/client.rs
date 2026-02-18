@@ -126,7 +126,7 @@ impl IpcClient {
                 Ok(json!({
                     "protocolVersion": "2024-11-05",
                     "serverInfo": {
-                        "name": "rust-analyzer-mcp",
+                        "name": "rust-analyzer-server",
                         "version": "0.3.0"
                     },
                     "capabilities": {
@@ -202,8 +202,8 @@ fn start_server(workspace_path: &Path, port: u16) -> Result<()> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
     let project_root = Path::new(&manifest_dir);
 
-    let release_binary = project_root.join("target/release/rust-analyzer-mcp");
-    let debug_binary = project_root.join("target/debug/rust-analyzer-mcp");
+    let release_binary = project_root.join("target/release/rust-analyzer-server");
+    let debug_binary = project_root.join("target/debug/rust-analyzer-server");
 
     // Prefer the most recently built binary (debug is usually more up-to-date during development)
     let binary = match (debug_binary.exists(), release_binary.exists()) {
@@ -224,7 +224,7 @@ fn start_server(workspace_path: &Path, port: u16) -> Result<()> {
         (false, true) => release_binary,
         (false, false) => {
             return Err(anyhow::anyhow!(
-                "rust-analyzer-mcp binary not found. Run `cargo build` first."
+                "rust-analyzer-server binary not found. Run `cargo build` first."
             ));
         }
     };

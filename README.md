@@ -1,434 +1,153 @@
-# rust-analyzer MCP Server (Enhanced)
+# rust-analyzer-server
 
-This is a Model Context Protocol (MCP) server that provides integration with rust-analyzer, allowing
-AI assistants to analyze Rust code, get hover information, find definitions, references, and more.
-Written in Rust for optimal performance and native integration.
+A standalone HTTP server for rust-analyzer that keeps the language server warm across requests, with installable Claude Code skills for seamless integration.
 
-## ⚡ Enhancements (Fork)
+## How It Works
 
-This fork includes significant improvements for large projects:
+```
+rust-analyzer-server (persistent HTTP server, rust-analyzer always warm)
+  ^  REST API (localhost:3000)
+  |
+Claude Code skills (.claude/commands/ra-*.md)
+  -> curl calls to the HTTP server
+```
 
-- ✅ **Token Efficiency**: 85-92% token reduction on all responses
-- ✅ **Large Project Support**: Increased timeouts for complex codebases
-- ✅ **New Features**: workspace_symbol, implementation, parent_module, call hierarchy
-- ✅ **Better Hover**: Full documentation support with struct fields
-- ✅ **Faster Navigation**: Removed unnecessary cargo checks
-
-**5 new tools added, 1 inefficient tool removed.**
+The server starts rust-analyzer once and keeps it running. All subsequent requests are fast because the project is already indexed.
 
 ## Prerequisites
 
-1. **rust-analyzer**: Make sure rust-analyzer is installed and available in your PATH
+1. **rust-analyzer** in your PATH:
    ```bash
-   # Install via rustup (recommended)
    rustup component add rust-analyzer
-   
-   # Or install directly
-   cargo install rust-analyzer
-   
-   # Verify installation
-   rust-analyzer --version
    ```
-
-2. **Rust**: Version 1.70 or higher with Cargo
-3. **A Rust project**: The server works best with a valid Rust workspace (containing `Cargo.toml`)
-
-## Why Rust?
-
-This Rust implementation offers several advantages over alternative implementations:
-
-- **Performance**: Native Rust binary with minimal overhead
-- **Memory Safety**: No runtime errors from memory issues
-- **Ecosystem Integration**: Perfect fit for Rust development workflows
-- **Small Binary Size**: Optimized release builds with LTO
-- **Concurrent Safety**: Tokio async runtime handles multiple requests efficiently
-- **Native LSP Handling**: Direct integration with rust-analyzer's protocol
+2. **Rust** 1.70+ with Cargo
 
 ## Installation
 
-### From crates.io (Recommended)
-
-Install directly from crates.io:
-```bash
-cargo install rust-analyzer-mcp
-```
-
-The binary will be installed to your Cargo bin directory (usually `~/.cargo/bin/rust-analyzer-mcp`).
-
 ### From Source
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/zeenix/rust-analyzer-mcp.git
-   cd rust-analyzer-mcp
-   ```
-
-2. Build the project:
-   ```bash
-   cargo build --release
-   ```
-
-3. The binary will be available at `target/release/rust-analyzer-mcp`
-
-## Configuration
-
-### Claude Code Configuration
-
-Add an MCP server configuration to one of these locations:
-
-**Option 1: Project-specific** (`.mcp.json` in your Rust project root):
-```json
-{
-  "mcpServers": {
-    "rust-analyzer": {
-      "command": "rust-analyzer-mcp"
-    }
-  }
-}
-```
-
-**Option 2: User-wide** (`~/.claude.json` or `~/.claude/settings.json`):
-```json
-{
-  "mcpServers": {
-    "rust-analyzer": {
-      "command": "rust-analyzer-mcp"
-    }
-  }
-}
-```
-
-**Note:** If you installed from crates.io, the command will be in your PATH. If you built from
-source, use the full path to the binary. You can also configure servers using Claude Code's CLI
-wizard too.
-
-### Claude Desktop Configuration
-
-Add this to your Claude Desktop configuration (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "rust-analyzer": {
-      "command": "rust-analyzer-mcp"
-    }
-  }
-}
-```
-
-**Note:** If installed from crates.io, the command will be in your PATH. For Claude Desktop, you
-may want to specify a `cwd` parameter if you want to analyze a specific project by default.
-
-### Other MCP Clients
-
-For other MCP clients, run the server with:
 ```bash
-./target/release/rust-analyzer-mcp
-```
-
-Or during development:
-```bash
-cargo run
-```
-
-The server communicates via stdio and follows the MCP protocol.
-
-## Available Tools
-
-All tools return simplified, token-efficient responses optimized for AI assistants.
-
-### Working Features ✅
-
-#### `rust_analyzer_workspace_symbol` ⭐ NEW
-Search for symbols across the entire workspace using a query (supports fuzzy matching).
-
-**Parameters:**
-- `query`: Search query for symbol names (e.g., 'TradeData', 'calculate')
-
-**Returns:** Simplified format
-```json
-[
-  {
-    "name": "TradeData",
-    "kind": "struct",
-    "location": "src/data/trade.rs:37:11"
-  }
-]
-```
-
-#### `rust_analyzer_definition`
-Find the definition of a symbol at a specific position.
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Line number (0-based)  
-- `character`: Character position (0-based)
-
-#### `rust_analyzer_references`
-Find all references to a symbol at a specific position.
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Line number (0-based)
-- `character`: Character position (0-based)
-
-#### `rust_analyzer_implementation` ⭐ NEW
-Find all implementations of a trait at a specific position.
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Line number (0-based)
-- `character`: Character position (0-based)
-
-**Returns:** Simplified format
-```json
-[
-  {"location": "src/processors/echo.rs:15:0"}
-]
-```
-
-#### `rust_analyzer_parent_module` ⭐ NEW
-Navigate to parent module declaration (useful for navigating module hierarchies).
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Line number (0-based)
-- `character`: Character position (0-based)
-
-**Returns:** Simplified format
-```json
-[
-  {"location": "src/data/mod.rs"}
-]
-```
-
-#### `rust_analyzer_incoming_calls` ⭐ NEW
-Find all functions that call this function (call hierarchy).
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Line number (0-based)
-- `character`: Character position (0-based)
-
-**Returns:** Simplified format
-```json
-[
-  {
-    "caller": "main",
-    "location": "src/main.rs:47:0"
-  }
-]
-```
-
-#### `rust_analyzer_outgoing_calls` ⭐ NEW
-Find all functions that this function calls (call hierarchy).
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Line number (0-based)
-- `character`: Character position (0-based)
-
-**Returns:** Simplified format
-```json
-[
-  {
-    "callee": "process",
-    "location": "src/main.rs:6:7"
-  }
-]
-```
-
-#### `rust_analyzer_hover`
-Get hover information (documentation, type info) for a symbol at a specific position.
-
-**Parameters:**
-- `file_path`: Path to the Rust file (relative to workspace)
-- `line`: Line number (0-based)
-- `character`: Character position (0-based)
-
-#### `rust_analyzer_completion`
-Get code completion suggestions at a specific position.
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Line number (0-based)
-- `character`: Character position (0-based)
-
-#### `rust_analyzer_format`
-Format a Rust file using rust-analyzer's formatter. Returns an array of text edits to apply.
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-
-Returns an empty array if the file is already formatted, or an array of edits with ranges and new
-text to apply.
-
-#### `rust_analyzer_code_actions`
-Get available code actions (quick fixes, refactorings) for a range.
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-- `line`: Start line number (0-based)
-- `character`: Start character position (0-based)
-- `end_line`: End line number (0-based)
-- `end_character`: End character position (0-based)
-
-**Note:** Code actions availability depends on:
-- rust-analyzer being fully indexed
-- Having actual code issues or refactoring opportunities in the selected range
-- May return empty array if no actions are applicable
-
-#### `rust_analyzer_diagnostics`
-Get diagnostics (errors, warnings, hints) for a specific file.
-
-**Parameters:**
-- `file_path`: Path to the Rust file
-
-Returns diagnostics with severity levels (error, warning, hint, information), messages, and location
-ranges. Includes a summary count of diagnostics by severity.
-
-#### `rust_analyzer_workspace_diagnostics`
-Get all diagnostics across the entire workspace.
-
-**Parameters:** None
-
-Returns aggregated diagnostics for all files in the workspace with file paths, severity levels,
-messages, and a summary of total counts by severity.
-
-### `rust_analyzer_set_workspace`
-Change the workspace root directory.
-
-**Parameters:**
-- `workspace_path`: Path to the new workspace root
-
-## Usage Examples
-
-Here are some example prompts you can use with Claude when this MCP server is configured:
-
-1. **Code Analysis:**
-   ```
-   Can you analyze the main function in src/main.rs and tell me what it does? 
-   Use the rust analyzer tools to get hover information and symbols.
-   ```
-
-2. **Finding Definitions:**
-   ```
-   I'm looking at a function call on line 25 of src/lib.rs at character position 10. 
-   Can you find its definition using rust-analyzer?
-   ```
-
-3. **Code Completion:**
-   ```
-   I'm writing code at line 15, character 8 in src/main.rs. 
-   What completion suggestions are available?
-   ```
-
-4. **Refactoring Help:**
-   ```
-   What code actions are available for the code between line 10-15 in src/utils.rs?
-   ```
-
-5. **Error Checking:**
-   ```
-   Can you get the diagnostics for src/main.rs and tell me about any errors or warnings?
-   ```
-
-6. **Workspace Analysis:**
-   ```
-   Show me all the diagnostics across the entire workspace using rust-analyzer.
-   ```
-
-## Project Structure
-
-```
-rust-analyzer-mcp-server/
-├── src/
-│   └── main.rs       # Main MCP server implementation
-├── Cargo.toml        # Rust dependencies and metadata
-└── README.md         # This file
-```
-
-## Development
-
-To run in development mode:
-```bash
-cargo run
-```
-
-To build for release:
-```bash
+git clone https://github.com/DSmyungjin/rust-analyzer-server.git
+cd rust-analyzer-server
 cargo build --release
 ```
 
-To run tests:
+The binary will be at `target/release/rust-analyzer-server`.
+
+## Usage
+
+### Start the Server
+
 ```bash
-cargo test
+# Start with default settings (port 3000, current directory as workspace)
+rust-analyzer-server
+
+# Specify workspace and port
+rust-analyzer-server --workspace /path/to/project --port 4000
+
+# Custom bind address
+rust-analyzer-server --bind 0.0.0.0 --port 3000
 ```
 
-To check code without building:
+Environment variable `RUST_ANALYZER_PORT` can also set the port.
+
+### Install Claude Code Skills
+
+Copy skill templates into any project:
+
 ```bash
-cargo check
+rust-analyzer-server install /path/to/your/project
 ```
 
-For verbose logging during development:
-```bash
-RUST_LOG=debug cargo run
+This creates `.claude/commands/ra-*.md` files that provide slash commands like `/ra-hover`, `/ra-definition`, `/ra-references`, etc.
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/health` | GET | Server status + workspace info |
+| `/api/v1/tools` | GET | List available tools |
+| `/api/v1/workspace` | GET | Current workspace |
+| `/api/v1/workspace` | POST | Change workspace |
+| `/api/v1/shutdown` | POST | Graceful shutdown |
+| `/api/v1/{tool_name}` | POST | Call any tool |
+
+All responses use a JSON envelope:
+```json
+{"ok": true, "result": {...}}
+{"ok": false, "error": "..."}
 ```
 
-To run with release optimizations in dev:
+### Example API Calls
+
 ```bash
-cargo run --release
+# Health check
+curl http://localhost:3000/api/v1/health
+
+# Get hover info
+curl -X POST http://localhost:3000/api/v1/rust_analyzer_hover \
+  -H 'Content-Type: application/json' \
+  -d '{"file_path":"src/main.rs","line":5,"character":10}'
+
+# Find definition
+curl -X POST http://localhost:3000/api/v1/rust_analyzer_definition \
+  -H 'Content-Type: application/json' \
+  -d '{"file_path":"src/main.rs","line":10,"character":15}'
+
+# Workspace symbol search
+curl -X POST http://localhost:3000/api/v1/rust_analyzer_workspace_symbol \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"MyStruct"}'
 ```
 
-## Troubleshooting
+## Available Tools
 
-### rust-analyzer not found
-- Ensure rust-analyzer is in your PATH: `which rust-analyzer`
-- Try reinstalling: `rustup component add rust-analyzer`
+| Tool | Description |
+|------|-------------|
+| `rust_analyzer_hover` | Type info + docs at position |
+| `rust_analyzer_definition` | Go to definition |
+| `rust_analyzer_references` | Find all references |
+| `rust_analyzer_workspace_symbol` | Search symbols across workspace |
+| `rust_analyzer_symbols` | Document symbols for a file |
+| `rust_analyzer_diagnostics` | File diagnostics (errors/warnings) |
+| `rust_analyzer_workspace_diagnostics` | All workspace diagnostics |
+| `rust_analyzer_incoming_calls` | Find callers of a function |
+| `rust_analyzer_outgoing_calls` | Find callees of a function |
+| `rust_analyzer_implementation` | Find trait implementations |
+| `rust_analyzer_parent_module` | Navigate to parent module |
+| `rust_analyzer_completion` | Code completions |
+| `rust_analyzer_format` | Format document |
+| `rust_analyzer_code_actions` | Quick fixes and refactorings |
+| `rust_analyzer_inlay_hint` | Type annotations for a range |
+| `rust_analyzer_set_workspace` | Change workspace root |
 
-### Connection errors
-- Make sure you're running the server in a valid Rust workspace (with Cargo.toml)
-- Check that the file paths are correct and relative to the workspace root
+## Installed Skills
 
-### Permission issues
-- Make sure the server has read access to your Rust files
-- Check that rust-analyzer has permission to analyze your project
+After running `rust-analyzer-server install`, these slash commands become available in Claude Code:
 
-### LSP communication issues
-- The server handles LSP protocol automatically
-- Check console output for any rust-analyzer errors (use `RUST_LOG=debug` for verbose logging)
-- Ensure your Rust project compiles successfully
+| Skill | Command | Description |
+|-------|---------|-------------|
+| `/ra-hover` | Hover info | Type info + docs at position |
+| `/ra-definition` | Go to def | Jump to definition |
+| `/ra-references` | Find refs | All references to a symbol |
+| `/ra-search` | Symbol search | Workspace-wide symbol search |
+| `/ra-diagnostics` | File errors | Diagnostics for a file |
+| `/ra-workspace-diagnostics` | All errors | Workspace-wide diagnostics |
+| `/ra-callers` | Callers | Who calls this function? |
+| `/ra-callees` | Callees | What does this function call? |
+| `/ra-implementations` | Impls | Find trait implementations |
+| `/ra-setup` | Health check | Verify server status |
+| `/ra-impact` | Impact analysis | Multi-step analysis (hover + refs + callers + impls) |
 
-### Build issues
-- Make sure you have Rust 1.70+ installed: `rustc --version`
-- Try `cargo clean` and rebuild if you encounter dependency issues
+## Development
 
-### Performance
-- rust-analyzer may take time to initially index large projects
-- Subsequent requests should be much faster
-- Consider excluding large target/ directories if needed
-
-## Contributing
-
-This is a foundation implementation that covers the most common rust-analyzer features. Contributions are welcome for:
-
-- Additional LSP methods (workspace symbols, rename, etc.)
-- Better error handling and diagnostics  
-- Configuration options (via CLI args or config files)
-- Performance optimizations and async improvements
-- Integration tests and benchmarks
-- Better LSP message parsing and error recovery
-- Support for additional rust-analyzer features
-
-### Development Guidelines
-
-- Use `cargo fmt` for consistent formatting
-- Run `cargo clippy` for linting
-- Add tests for new functionality  
-- Update documentation for new tools
-- Follow Rust async best practices with Tokio
+```bash
+cargo build          # Build
+cargo test           # Run all 35 tests
+cargo run            # Run in dev mode
+RUST_LOG=debug cargo run  # Verbose logging
+```
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
+MIT
