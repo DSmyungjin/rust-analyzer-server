@@ -10,7 +10,7 @@ use crate::{
     protocol::mcp::{ContentItem, ToolResult},
 };
 
-use super::server::RustAnalyzerMCPServer;
+use super::server::{InitTrigger, RustAnalyzerMCPServer};
 
 /// Helper struct for extracting common tool parameters.
 struct ToolParams;
@@ -746,6 +746,15 @@ async fn handle_set_workspace(
 
     // Resolve the new workspace path.
     let new_workspace_root = PathBuf::from(workspace_path);
+
+    // Validate path exists before anything else.
+    if !new_workspace_root.exists() {
+        return Err(anyhow!(
+            "Workspace path does not exist: {}",
+            new_workspace_root.display()
+        ));
+    }
+
     let new_workspace_root = new_workspace_root.canonicalize().unwrap_or_else(|_| {
         if new_workspace_root.is_absolute() {
             new_workspace_root.clone()
@@ -769,11 +778,18 @@ async fn handle_set_workspace(
         });
     }
 
+    let previous_workspace = server.workspace_root.clone();
+
     // Shutdown existing client only if changing workspace.
     if let Some(client) = &mut server.client {
         client.shutdown().await?;
     }
     server.client = None;
+
+    // Track the workspace change.
+    server.init_trigger = InitTrigger::WorkspaceChange {
+        previous: previous_workspace,
+    };
 
     // Set new workspace.
     server.workspace_root = new_workspace_root;

@@ -54,8 +54,12 @@ pub async fn status(State(state): State<AppState>) -> Json<ApiResponse> {
     let has_client = server.client.is_some();
     let is_indexing = server.is_indexing().await;
     let active_tasks = server.active_progress().await;
+    let workspace_valid = server.workspace_exists();
+    let (trigger, previous_workspace) = server.trigger_info();
 
-    let server_state = if !has_client {
+    let server_state = if !workspace_valid {
+        "error"
+    } else if !has_client {
         "stopped"
     } else if is_indexing {
         "indexing"
@@ -63,13 +67,21 @@ pub async fn status(State(state): State<AppState>) -> Json<ApiResponse> {
         "ready"
     };
 
-    ApiResponse::success(json!({
+    let mut result = json!({
         "workspace": server.workspace_root.display().to_string(),
+        "workspace_valid": workspace_valid,
         "state": server_state,
         "initialized": has_client,
         "indexing": is_indexing,
+        "trigger": trigger,
         "progress": active_tasks,
-    }))
+    });
+
+    if let Some(prev) = previous_workspace {
+        result["previous_workspace"] = json!(prev);
+    }
+
+    ApiResponse::success(result)
 }
 
 pub async fn list_tools() -> Json<ApiResponse> {

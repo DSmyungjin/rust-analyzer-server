@@ -10,18 +10,54 @@
 
 ## rust-analyzer HTTP API
 
-A persistent rust-analyzer server runs on `localhost:${RUST_ANALYZER_PORT:-15423}`. **Use this instead of Grep/Glob for code structure analysis.** All responses are token-optimized (85-94% reduction vs raw LSP).
+Persistent rust-analyzer server on `localhost:${RUST_ANALYZER_PORT:-15423}`. **Use this instead of Grep/Glob for code structure analysis.** All responses are token-optimized (85-94% reduction vs raw LSP).
 
-### Setup (run once per workspace)
+### Status Check (always first)
 
 ```bash
-# Check current workspace
-curl -s http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/workspace
-
-# Set workspace (skips if already set to same path)
-curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/rust_analyzer_set_workspace" \
-  -H 'Content-Type: application/json' -d '{"workspace":"/absolute/path/to/project"}'
+curl -s http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/status
 ```
+
+Response:
+```json
+{
+  "workspace": "/absolute/path/to/project",
+  "workspace_valid": true,
+  "state": "ready",
+  "initialized": true,
+  "indexing": false,
+  "trigger": "initial_start",
+  "progress": []
+}
+```
+
+| state | Meaning | Action |
+|-------|---------|--------|
+| `"stopped"` | Client not started | Call `set_workspace` → poll status |
+| `"indexing"` | Parsing/indexing in progress | Poll status every 2s, wait for `"ready"` |
+| `"ready"` | Ready for queries | Use normally |
+| `"error"` | Workspace path doesn't exist | Call `set_workspace` with valid path |
+
+| trigger | Meaning |
+|---------|---------|
+| `"none"` | Server just started |
+| `"initial_start"` | First client initialization |
+| `"workspace_change"` | Workspace switched (`previous_workspace` field shows old path) |
+
+During indexing, `progress` array shows live progress:
+```json
+{"token": "rustAnalyzer/Indexing", "title": "Indexing", "message": "45/123 (serde)", "percentage": 36}
+```
+
+### Workspace Setup
+
+```bash
+# Set workspace (skips if already set to same path, errors if path doesn't exist)
+curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/rust_analyzer_set_workspace" \
+  -H 'Content-Type: application/json' -d '{"workspace_path":"/absolute/path/to/project"}'
+```
+
+**Only query when state is "ready". After set_workspace, re-check status.**
 
 ### API Reference
 
@@ -81,25 +117,26 @@ curl -s -X POST "http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/rust_analy
 | Find trait implementors | `implementation` | Grep (misses blanket impls) |
 | Text/string literal search | Grep | rust-analyzer |
 
-### Workflow Pattern
+### Workflow
 
 ```
-1. workspace_symbol("TargetName") → find file:line
-2. Read file for context
-3. hover(file, line, char) → understand types
-4. references(file, line, char) → find all usages
-5. Edit code
-6. diagnostics(file) → verify no errors
+1. status → check state
+2. if state != "ready":
+   - "stopped" → set_workspace → poll status
+   - "indexing" → poll status (2s interval)
+   - "error" → set_workspace with valid path
+3. workspace_symbol("TargetName") → find file:line
+4. Read file for context
+5. hover(file, line, char) → understand types
+6. references(file, line, char) → find all usages
+7. Edit code
+8. diagnostics(file) → verify no errors
 ```
+
+After workspace change: `set_workspace` → status transitions to `"indexing"` → wait for `"ready"`
 
 ### Response Format
 
 All responses: `{"ok": true, "result": {...}}` or `{"ok": false, "error": "..."}`
-
-### Health Check
-
-```bash
-curl -s http://localhost:${RUST_ANALYZER_PORT:-15423}/api/v1/health
-```
 
 If server is not running: `rust-analyzer-server --workspace /path/to/project`

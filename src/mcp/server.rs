@@ -5,9 +5,21 @@ use std::path::PathBuf;
 use crate::lsp::progress::ProgressEntry;
 use crate::lsp::RustAnalyzerClient;
 
+/// Tracks why the server is in its current state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InitTrigger {
+    /// Fresh server start, no workspace set yet.
+    None,
+    /// First client start via tool call or CLI.
+    InitialStart,
+    /// Workspace was changed to a different path.
+    WorkspaceChange { previous: PathBuf },
+}
+
 pub struct RustAnalyzerMCPServer {
     pub(crate) client: Option<RustAnalyzerClient>,
     pub(crate) workspace_root: PathBuf,
+    pub(crate) init_trigger: InitTrigger,
 }
 
 impl Default for RustAnalyzerMCPServer {
@@ -21,6 +33,7 @@ impl RustAnalyzerMCPServer {
         Self {
             client: None,
             workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            init_trigger: InitTrigger::None,
         }
     }
 
@@ -40,11 +53,22 @@ impl RustAnalyzerMCPServer {
         Self {
             client: None,
             workspace_root,
+            init_trigger: InitTrigger::None,
         }
     }
 
     pub(crate) async fn ensure_client_started(&mut self) -> Result<()> {
         if self.client.is_none() {
+            // Validate workspace path exists.
+            if !self.workspace_root.exists() {
+                return Err(anyhow::anyhow!(
+                    "Workspace path does not exist: {}",
+                    self.workspace_root.display()
+                ));
+            }
+            if self.init_trigger == InitTrigger::None {
+                self.init_trigger = InitTrigger::InitialStart;
+            }
             info!("Starting rust-analyzer for workspace: {}", self.workspace_root.display());
             let mut client = RustAnalyzerClient::new(self.workspace_root.clone());
             client.start().await?;
@@ -84,6 +108,20 @@ impl RustAnalyzerMCPServer {
             Some(client) => client.progress.lock().await.active_tasks(),
             None => vec![],
         }
+    }
+
+    pub fn trigger_info(&self) -> (&str, Option<String>) {
+        match &self.init_trigger {
+            InitTrigger::None => ("none", None),
+            InitTrigger::InitialStart => ("initial_start", None),
+            InitTrigger::WorkspaceChange { previous } => {
+                ("workspace_change", Some(previous.display().to_string()))
+            }
+        }
+    }
+
+    pub fn workspace_exists(&self) -> bool {
+        self.workspace_root.exists()
     }
 
     pub async fn shutdown(&mut self) {
