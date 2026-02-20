@@ -100,31 +100,41 @@ impl RustAnalyzerClient {
     }
 
     pub async fn workspace_diagnostics(&mut self) -> Result<Value> {
-        // Try workspace/diagnostic if available, otherwise collect from all open documents.
         let params = json!({
             "identifier": "rust-analyzer",
             "previousResultId": null
         });
 
-        match self
+        let pull_result = self
             .send_request("workspace/diagnostic", Some(params))
             .await
-        {
-            Ok(response) => Ok(response),
-            Err(_) => {
-                // Fallback: return diagnostics for all open documents.
-                let mut all_diagnostics = json!({});
-                let open_docs = self.open_documents.lock().await.clone();
+            .ok()
+            .filter(|r| !r.is_null());
 
-                for doc_uri in open_docs.iter() {
-                    if let Ok(diag) = self.diagnostics(doc_uri).await {
-                        all_diagnostics[doc_uri] = diag;
-                    }
+        if let Some(response) = pull_result {
+            return Ok(response);
+        }
+
+        // Fallback: use cached push diagnostics + open documents.
+        let mut all_diagnostics = json!({});
+
+        // 1) Use cached publishDiagnostics data.
+        let cached = self.diagnostics.lock().await.clone();
+        for (uri, diags) in &cached {
+            all_diagnostics[uri] = json!(diags);
+        }
+
+        // 2) Try open documents not already in cache.
+        let open_docs = self.open_documents.lock().await.clone();
+        for doc_uri in open_docs.iter() {
+            if all_diagnostics.get(doc_uri).is_none() {
+                if let Ok(diag) = self.diagnostics(doc_uri).await {
+                    all_diagnostics[doc_uri] = diag;
                 }
-
-                Ok(all_diagnostics)
             }
         }
+
+        Ok(all_diagnostics)
     }
 
     pub async fn implementation(&mut self, uri: &str, line: u32, character: u32) -> Result<Value> {

@@ -9,9 +9,9 @@ pub const DOCUMENT_OPEN_DELAY_MILLIS: u64 = 1000;
 /// Detects CI environment and uses longer timeout if needed.
 pub fn get_indexing_timeout_secs() -> u64 {
     if std::env::var("CI").is_ok() {
-        30 // Longer timeout in CI
+        60 // Longer timeout in CI
     } else {
-        15 // Shorter timeout for local development
+        60 // Longer timeout for large projects
     }
 }
 

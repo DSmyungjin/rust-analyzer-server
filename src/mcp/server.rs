@@ -2,6 +2,7 @@ use anyhow::Result;
 use log::info;
 use std::path::PathBuf;
 
+use crate::lsp::progress::ProgressEntry;
 use crate::lsp::RustAnalyzerClient;
 
 pub struct RustAnalyzerMCPServer {
@@ -69,6 +70,20 @@ impl RustAnalyzerMCPServer {
 
         client.open_document(&uri, &content).await?;
         Ok(uri)
+    }
+
+    pub async fn is_indexing(&self) -> bool {
+        match &self.client {
+            Some(client) => client.progress.lock().await.is_indexing(),
+            None => false,
+        }
+    }
+
+    pub async fn active_progress(&self) -> Vec<ProgressEntry> {
+        match &self.client {
+            Some(client) => client.progress.lock().await.active_tasks(),
+            None => vec![],
+        }
     }
 
     pub async fn shutdown(&mut self) {

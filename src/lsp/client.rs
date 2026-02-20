@@ -19,6 +19,8 @@ use crate::{
     protocol::lsp::LSPRequest,
 };
 
+use super::progress::{new_shared_progress, SharedProgress};
+
 pub struct RustAnalyzerClient {
     pub(super) process: Option<Child>,
     pub(super) request_id: Arc<Mutex<u64>>,
@@ -28,6 +30,7 @@ pub struct RustAnalyzerClient {
     pub(super) initialized: bool,
     pub(super) open_documents: Arc<Mutex<HashSet<String>>>,
     pub(super) diagnostics: Arc<Mutex<HashMap<String, Vec<Value>>>>,
+    pub progress: SharedProgress,
 }
 
 impl RustAnalyzerClient {
@@ -52,6 +55,7 @@ impl RustAnalyzerClient {
             initialized: false,
             open_documents: Arc::new(Mutex::new(HashSet::new())),
             diagnostics: Arc::new(Mutex::new(HashMap::new())),
+            progress: new_shared_progress(),
         }
     }
 
@@ -110,6 +114,7 @@ impl RustAnalyzerClient {
             stderr,
             Arc::clone(&self.pending_requests),
             Arc::clone(&self.diagnostics),
+            Arc::clone(&self.progress),
         );
 
         self.process = Some(child);

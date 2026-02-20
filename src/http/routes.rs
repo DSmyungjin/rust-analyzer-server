@@ -49,6 +49,29 @@ pub async fn health(State(state): State<AppState>) -> Json<ApiResponse> {
     }))
 }
 
+pub async fn status(State(state): State<AppState>) -> Json<ApiResponse> {
+    let server = state.server.lock().await;
+    let has_client = server.client.is_some();
+    let is_indexing = server.is_indexing().await;
+    let active_tasks = server.active_progress().await;
+
+    let server_state = if !has_client {
+        "stopped"
+    } else if is_indexing {
+        "indexing"
+    } else {
+        "ready"
+    };
+
+    ApiResponse::success(json!({
+        "workspace": server.workspace_root.display().to_string(),
+        "state": server_state,
+        "initialized": has_client,
+        "indexing": is_indexing,
+        "progress": active_tasks,
+    }))
+}
+
 pub async fn list_tools() -> Json<ApiResponse> {
     let tools = get_tools();
     ApiResponse::success(json!({ "tools": tools }))

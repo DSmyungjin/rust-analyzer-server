@@ -6,6 +6,7 @@ use tokio::{
     sync::{oneshot, Mutex},
 };
 
+use super::progress::SharedProgress;
 use crate::protocol::lsp::LSPResponse;
 
 pub fn start_handlers(
@@ -13,12 +14,13 @@ pub fn start_handlers(
     stderr: tokio::process::ChildStderr,
     pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>,
     diagnostics: Arc<Mutex<HashMap<String, Vec<Value>>>>,
+    progress: SharedProgress,
 ) {
     // Log stderr in background.
     tokio::spawn(handle_stderr(stderr));
 
     // Start response handler task.
-    tokio::spawn(handle_stdout(stdout, pending_requests, diagnostics));
+    tokio::spawn(handle_stdout(stdout, pending_requests, diagnostics, progress));
 }
 
 async fn handle_stderr(stderr: tokio::process::ChildStderr) {
@@ -50,6 +52,7 @@ async fn handle_stdout(
     stdout: tokio::process::ChildStdout,
     pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>,
     diagnostics: Arc<Mutex<HashMap<String, Vec<Value>>>>,
+    progress: SharedProgress,
 ) {
     let mut reader = BufReader::new(stdout);
     let mut buffer = String::new();
@@ -90,7 +93,7 @@ async fn handle_stdout(
         let response_str = String::from_utf8_lossy(&json_buffer);
         debug!("Received LSP message: {}", response_str);
 
-        handle_lsp_message(&json_buffer, &pending, &diagnostics).await;
+        handle_lsp_message(&json_buffer, &pending, &diagnostics, &progress).await;
     }
 }
 
@@ -104,6 +107,7 @@ async fn handle_lsp_message(
     json_buffer: &[u8],
     pending: &Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>,
     diagnostics: &Arc<Mutex<HashMap<String, Vec<Value>>>>,
+    progress: &SharedProgress,
 ) {
     let Ok(json_value) = serde_json::from_slice::<Value>(json_buffer) else {
         error!(
@@ -115,7 +119,7 @@ async fn handle_lsp_message(
 
     // Check if it's a notification (has method but no id).
     if json_value.get("method").is_some() && json_value.get("id").is_none() {
-        handle_notification(json_value, diagnostics).await;
+        handle_notification(json_value, diagnostics, progress).await;
         return;
     }
 
@@ -146,6 +150,7 @@ async fn handle_lsp_message(
 async fn handle_notification(
     json_value: Value,
     diagnostics: &Arc<Mutex<HashMap<String, Vec<Value>>>>,
+    progress: &SharedProgress,
 ) {
     let Some(method) = json_value.get("method").and_then(|m| m.as_str()) else {
         return;
@@ -153,23 +158,59 @@ async fn handle_notification(
 
     debug!("Received notification: {}", method);
 
-    if method != "textDocument/publishDiagnostics" {
-        return;
+    match method {
+        "textDocument/publishDiagnostics" => {
+            let Some(params) = json_value.get("params") else {
+                return;
+            };
+            let Some(uri) = params.get("uri").and_then(|u| u.as_str()) else {
+                return;
+            };
+            let Some(diags) = params.get("diagnostics").and_then(|d| d.as_array()) else {
+                return;
+            };
+
+            let mut diag_lock = diagnostics.lock().await;
+            diag_lock.insert(uri.to_string(), diags.clone());
+            info!("Stored {} diagnostics for {}", diags.len(), uri);
+        }
+        "$/progress" => {
+            let Some(params) = json_value.get("params") else {
+                return;
+            };
+            let token = params
+                .get("token")
+                .and_then(|t| t.as_str().map(String::from).or_else(|| t.as_u64().map(|n| n.to_string())));
+            let Some(token) = token else {
+                return;
+            };
+            let Some(value) = params.get("value") else {
+                return;
+            };
+            let kind = value.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+
+            let mut state = progress.lock().await;
+            match kind {
+                "begin" => {
+                    let title = value.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                    let message = value.get("message").and_then(|m| m.as_str()).map(String::from);
+                    let percentage = value.get("percentage").and_then(|p| p.as_u64()).map(|p| p as u32);
+                    info!("Progress begin: {} - {}", token, title);
+                    state.begin(token, title, message, percentage);
+                }
+                "report" => {
+                    let message = value.get("message").and_then(|m| m.as_str()).map(String::from);
+                    let percentage = value.get("percentage").and_then(|p| p.as_u64()).map(|p| p as u32);
+                    debug!("Progress report: {} - {:?} {:?}%", token, message, percentage);
+                    state.report(&token, message, percentage);
+                }
+                "end" => {
+                    info!("Progress end: {}", token);
+                    state.end(&token);
+                }
+                _ => {}
+            }
+        }
+        _ => {}
     }
-
-    let Some(params) = json_value.get("params") else {
-        return;
-    };
-
-    let Some(uri) = params.get("uri").and_then(|u| u.as_str()) else {
-        return;
-    };
-
-    let Some(diags) = params.get("diagnostics").and_then(|d| d.as_array()) else {
-        return;
-    };
-
-    let mut diag_lock = diagnostics.lock().await;
-    diag_lock.insert(uri.to_string(), diags.clone());
-    info!("Stored {} diagnostics for {}", diags.len(), uri);
 }

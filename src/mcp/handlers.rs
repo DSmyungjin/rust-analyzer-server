@@ -859,6 +859,18 @@ async fn handle_workspace_diagnostics(
 }
 
 fn format_workspace_diagnostics(workspace_root: &Path, result: &Value) -> Value {
+    if result.is_null() {
+        return json!({
+            "workspace": workspace_root.display().to_string(),
+            "diagnostics": [],
+            "summary": {
+                "total_files": 0,
+                "total_errors": 0,
+                "total_warnings": 0
+            }
+        });
+    }
+
     if !result.is_object() {
         // Handle unexpected format.
         if let Some(items) = result.get("items") {

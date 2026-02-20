@@ -24,6 +24,7 @@ pub async fn serve(bind: &str, port: u16, server: RustAnalyzerMCPServer) -> anyh
 
     let router = Router::new()
         .route("/api/v1/health", get(routes::health))
+        .route("/api/v1/status", get(routes::status))
         .route("/api/v1/tools", get(routes::list_tools))
         .route("/api/v1/workspace", get(routes::get_workspace))
         .route("/api/v1/workspace", post(routes::set_workspace))
